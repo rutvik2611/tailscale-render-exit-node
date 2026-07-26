@@ -2,6 +2,7 @@
 # Tailscale Exit Node - Dockerfile
 # =============================================================================
 # Minimal production image that runs Tailscale and advertises as an exit node.
+# Includes a lightweight HTTP health endpoint for Render wake-up + monitoring.
 # =============================================================================
 
 FROM alpine:3.20
@@ -17,7 +18,8 @@ RUN apk add --no-cache \
     curl \
     ca-certificates \
     bash \
-    tzdata
+    tzdata \
+    python3
 
 # ---------------------------------------------------------------------------
 # Create tailscale data directory
@@ -47,6 +49,7 @@ EXPOSE 8080
 # ---------------------------------------------------------------------------
 ENV TAILSCALE_AUTHKEY=""
 ENV HOSTNAME="render-exit-node"
+ENV PORT=8080
 
 # The container needs NET_ADMIN and SYS_MODULE capabilities
 # Add these in render.yaml or your docker-compose.yml

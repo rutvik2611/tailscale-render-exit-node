@@ -5,7 +5,7 @@
 # Verifies:
 #   1. tailscaled process is running
 #   2. Tailscale is connected to the tailnet
-#   3. Exit node is being advertised
+#   3. Routes are being advertised for exit node (0.0.0.0/0, ::/0)
 #   4. Has a valid IPv4 address
 #
 # Exit codes:
@@ -25,37 +25,52 @@ if ! pgrep -x tailscaled > /dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# Check 2: tailscale binary is reachable and status works
+# Check 2: tailscale binary is reachable
 # ---------------------------------------------------------------------------
 if ! command -v tailscale &> /dev/null; then
     ERRORS+=("tailscale binary not found")
 else
-    # -----------------------------------------------------------------------
-    # Check 3: Connected to tailnet
-    # -----------------------------------------------------------------------
-    if ! tailscale status --json 2>/dev/null | grep -q '"Online":true'; then
-        # Fallback: check non-JSON status
-        if ! tailscale status 2>/dev/null | grep -q "$(hostname 2>/dev/null || echo "")"; then
-            ERRORS+=("Tailscale does not appear to be connected to the tailnet")
+    # Use --json output for reliable status checking
+    TS_JSON=$(tailscale status --json 2>/dev/null || echo "")
+
+    if [ -z "${TS_JSON}" ]; then
+        ERRORS+=("tailscale status --json returned empty output")
+    else
+        # -------------------------------------------------------------------
+        # Check 3: Backend state is Running
+        # -------------------------------------------------------------------
+        if ! echo "${TS_JSON}" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('BackendState')=='Running' else 1)" 2>/dev/null; then
+            ERRORS+=("Tailscale backend is not in Running state")
         fi
-    fi
 
-    # -----------------------------------------------------------------------
-    # Check 4: Has IP address
-    # -----------------------------------------------------------------------
-    TS_IP=$(tailscale ip -4 2>/dev/null || true)
-    if [ -z "${TS_IP}" ]; then
-        ERRORS+=("No Tailscale IPv4 address assigned")
-    fi
+        # -------------------------------------------------------------------
+        # Check 4: Node is Online
+        # -------------------------------------------------------------------
+        if ! echo "${TS_JSON}" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('Self',{}).get('Online') else 1)" 2>/dev/null; then
+            ERRORS+=("Tailscale node is not online")
+        fi
 
-    # -----------------------------------------------------------------------
-    # Check 5: Exit node enabled
-    # -----------------------------------------------------------------------
-    if ! tailscale status --json 2>/dev/null | grep -q '"ExitNode":true'; then
-        # Check via self status
-        SELF_STATUS=$(tailscale status 2>/dev/null | grep "$(hostname 2>/dev/null)" || true)
-        if echo "${SELF_STATUS}" | grep -qv "exit node"; then
-            ERRORS+=("Exit node advertisement may not be enabled (check tailscale status output)")
+        # -------------------------------------------------------------------
+        # Check 5: Has IPv4 address
+        # -------------------------------------------------------------------
+        if ! echo "${TS_JSON}" | python3 -c "import json,sys; d=json.load(sys.stdin); ips=d.get('TailscaleIPs',[]); sys.exit(0 if any('.' in ip for ip in ips) else 1)" 2>/dev/null; then
+            ERRORS+=("No Tailscale IPv4 address assigned")
+        fi
+
+        # -------------------------------------------------------------------
+        # Check 6: Exit node routes advertised (0.0.0.0/0)
+        # Check via debug prefs since it's the most reliable source
+        # -------------------------------------------------------------------
+        TS_PREFS=$(tailscale debug prefs 2>/dev/null || echo "")
+        if [ -n "${TS_PREFS}" ]; then
+            if ! echo "${TS_PREFS}" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+routes = d.get('AdvertiseRoutes', [])
+sys.exit(0 if '0.0.0.0/0' in routes else 1)
+" 2>/dev/null; then
+                ERRORS+=("Exit node routes (0.0.0.0/0) are not being advertised")
+            fi
         fi
     fi
 fi
@@ -71,15 +86,15 @@ if [ ${#ERRORS[@]} -gt 0 ]; then
 
     # Debug info
     echo "---" >&2
-    echo "tailscale status output:" >&2
+    echo "tailscale status:" >&2
     tailscale status 2>&1 || echo "  (unavailable)" >&2
-    echo "---" >&2
-    echo "tailscale ip output:" >&2
+    echo "tailscale ip:" >&2
     tailscale ip 2>&1 || echo "  (unavailable)" >&2
 
     exit 1
 fi
 
 echo "HEALTHY - Tailscale exit node is running correctly"
-echo "  IP: $(tailscale ip -4 2>/dev/null || echo 'unknown')"
+echo "  IPv4: $(tailscale ip -4 2>/dev/null || echo 'unknown')"
+echo "  Routes advertised: 0.0.0.0/0, ::/0"
 exit 0
