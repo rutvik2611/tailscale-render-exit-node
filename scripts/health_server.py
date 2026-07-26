@@ -6,7 +6,10 @@ PORT = int(os.environ.get('PORT', 8080))
 
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/health':
+        # HTTP forward proxy mode: if path is a full URL, fetch and return
+        if self.path.startswith('http://') or self.path.startswith('https://'):
+            self._proxy_request()
+        elif self.path == '/health':
             self.send(200, b'application/json',
                 json.dumps({'status':'alive','service':'tailscale-exit-node'}).encode())
         elif self.path == '/status':
@@ -24,6 +27,27 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Type', ctype.decode())
         self.end_headers()
         self.wfile.write(body)
+
+    def _proxy_request(self):
+        """HTTP forward proxy: fetch a URL and return its content.
+        Set Android WiFi proxy to: tailscale-exit-node-9bxt.onrender.com:443
+        """
+        import urllib.request
+        try:
+            req = urllib.request.Request(self.path,
+                headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = resp.read()
+                self.send_response(resp.status)
+                for k, v in resp.headers.items():
+                    if k.lower() in ('content-type', 'content-length', 'cache-control'):
+                        self.send_header(k, v)
+                self.end_headers()
+                self.wfile.write(data)
+        except Exception as e:
+            try:
+                self.send_error(502, str(e))
+            except: pass
 
     def _get_status(self):
         try:
