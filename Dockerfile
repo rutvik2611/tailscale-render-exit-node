@@ -47,6 +47,8 @@ RUN mkdir -p /var/lib/tailscale /var/run/tailscale && \
 COPY scripts/healthcheck.sh /usr/local/bin/healthcheck.sh
 RUN chmod +x /usr/local/bin/healthcheck.sh
 
+COPY scripts/health_server.py /usr/local/bin/health_server.py
+
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
