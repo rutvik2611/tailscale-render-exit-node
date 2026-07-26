@@ -18,6 +18,9 @@ class H(http.server.BaseHTTPRequestHandler):
         elif self.path == '/api/status':
             self.send(200, b'application/json',
                 json.dumps(self._build_json_status(), indent=2).encode())
+        elif self.path == '/udp-test':
+            html = self._build_udp_test_page()
+            self.send(200, b'text/html;charset=utf-8', html.encode())
         else:
             self.send(200, b'text/plain',
                 b'TAILSCALE EXIT NODE - HEALTH OK\n')
@@ -122,6 +125,59 @@ a{{color:#58a6ff;text-decoration:none}}
         si = d.get('Self',{}); ps = d.get('Peer',{})
         devs = [{'name':p.get('DNSName','').split('.')[0],'ip':(p.get('TailscaleIPs') or [None])[0],'os':p.get('OS',''),'online':p.get('Online',False),'relay':p.get('Relay','direct')} for p in ps.values()]
         return {'this_node':{'name':si.get('HostName',''),'ip':d.get('TailscaleIPs',[]),'version':d.get('Version','')},'connected_devices':devs,'total':len(devs)}
+
+    def _build_udp_test_page(self):
+        """Test UDP connectivity through this exit node."""
+        import socket
+        status, detail, color = 'Testing...', '', '#ffa726'
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(3)
+            msg = b'udp-test-from-render-exit-node'
+            sock.sendto(msg, ('65.21.106.102', 8080))
+            data, addr = sock.recvfrom(1024)
+            reply = data.decode().strip()
+            status = '✅ UDP WORKING'
+            detail = f'Reply: {reply}'
+            color = '#3fb950'
+        except socket.timeout:
+            status = '❌ UDP BLOCKED'
+            detail = 'No response from echo server (timeout)'
+            color = '#f85149'
+        except Exception as e:
+            status = '❌ UDP ERROR'
+            detail = str(e)
+            color = '#f85149'
+        finally:
+            sock.close()
+
+        from datetime import datetime
+        ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        return f'''<!DOCTYPE html><html lang=en><head>
+<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>UDP Test – Render Exit Node</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#0d1117;color:#c9d1d9;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;line-height:1.6;padding:20px}}
+h1{{font-size:1.5rem;font-weight:600;margin-bottom:4px}}
+.sub{{color:#8b949e;font-size:.85rem;margin-bottom:24px}}
+.card{{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;margin-bottom:16px}}
+.result{{font-size:1.2rem;font-weight:600;color:{color};margin:16px 0}}
+.detail{{color:#8b949e;font-size:.875rem}}
+code{{background:#21262d;padding:2px 6px;border-radius:4px;font-size:.8rem}}
+a{{color:#58a6ff}}
+</style></head><body>
+<h1>🔌 UDP Connectivity Test</h1>
+<p class=sub>Tests if UDP packets can reach the internet through this exit node</p>
+<div class=card>
+<p class=result>{status}</p>
+<p class=detail>{detail}</p>
+<p class=detail style=margin-top:12px>Server: <code>65.21.106.102:8080</code><br>
+Timestamp: <code>{ts}</code><br>
+Exit node IP: <code>{subprocess.run(["tailscale","ip","-4"],capture_output=True,text=True).stdout.strip()}</code></p>
+</div>
+<p class=sub><a href=/udp-test>Run again</a> &middot; <a href=/status>Status page</a></p>
+</body></html>'''
 
     def log_message(self, fmt, *args): pass
 
