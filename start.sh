@@ -12,7 +12,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-HOSTNAME="${HOSTNAME:-render-exit-node}"
+HOSTNAME="${HOSTNAME:-renderfn-exit}"
 TAILSCALE_AUTHKEY="${TAILSCALE_AUTHKEY:-}"
 TAILSCALE_EXTRA_ARGS="${TAILSCALE_EXTRA_ARGS:-}"
 TAILSCALE_STATE_DIR="/var/lib/tailscale"
@@ -70,6 +70,50 @@ class HealthHandler(http.server.BaseHTTPRequestHandler):
                 'service': 'tailscale-exit-node',
                 'hostname': os.environ.get('HOSTNAME', 'unknown')
             }).encode())
+        elif self.path == '/status':
+            # Return tailscale status with all connected devices
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ['tailscale', 'status', '--json'],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    data = json.loads(result.stdout)
+                    # Build a clean summary
+                    self_info = data.get('Self', {})
+                    peers = data.get('Peer', {})
+                    devices = []
+                    for pid, peer in peers.items():
+                        devices.append({
+                            'name': peer.get('DNSName', '').replace('.tail70c77e.ts.net.', ''),
+                            'ip': peer.get('TailscaleIPs', [None])[0],
+                            'os': peer.get('OS', ''),
+                            'online': peer.get('Online', False),
+                            'offers_exit': peer.get('ExitNodeOption', False)
+                        })
+                    self.wfile.write(json.dumps({
+                        'this_node': {
+                            'name': self_info.get('HostName', ''),
+                            'ip': data.get('TailscaleIPs', []),
+                            'online': self_info.get('Online', False),
+                            'offers_exit': self_info.get('ExitNodeOption', False)
+                        },
+                        'connected_devices': devices,
+                        'total_devices': len(peers)
+                    }, indent=2).encode())
+                else:
+                    self.wfile.write(json.dumps({
+                        'error': 'Failed to get tailscale status',
+                        'stderr': result.stderr
+                    }).encode())
+            except Exception as e:
+                self.wfile.write(json.dumps({
+                    'error': str(e)
+                }).encode())
         elif self.path == '/':
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain')
@@ -197,14 +241,29 @@ while true; do
     if ! kill -0 "${HEALTH_PID}" 2>/dev/null; then
         log "WARNING: HTTP health server died. Restarting..."
         python3 -u -c "
-import http.server, json, os
+import http.server, json, os, sys, subprocess
 PORT = int(os.environ.get('PORT', 8080))
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-Type','application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps({'status':'alive'}).encode())
+        if self.path == '/health':
+            self.send_response(200); self.send_header('Content-Type','application/json'); self.end_headers()
+            self.wfile.write(json.dumps({'status':'alive','service':'tailscale-exit-node'}).encode())
+        elif self.path == '/status':
+            self.send_response(200); self.send_header('Content-Type','application/json'); self.end_headers()
+            try:
+                r = subprocess.run(['tailscale','status','--json'], capture_output=True, text=True, timeout=10)
+                if r.returncode == 0:
+                    d = json.loads(r.stdout)
+                    peers = d.get('Peer',{})
+                    devices = [{'name':p.get('DNSName','').split('.')[0],'ip':(p.get('TailscaleIPs') or [None])[0],'os':p.get('OS',''),'online':p.get('Online',False)} for p in peers.values()]
+                    self.wfile.write(json.dumps({'this_node':{'name':d.get('Self',{}).get('HostName',''),'ip':d.get('TailscaleIPs',[])},'connected_devices':devices,'total':len(devices)},indent=2).encode())
+                else:
+                    self.wfile.write(json.dumps({'error':'tailscale status failed'}).encode())
+            except Exception as e:
+                self.wfile.write(json.dumps({'error':str(e)}).encode())
+        else:
+            self.send_response(200); self.send_header('Content-Type','text/plain'); self.end_headers()
+            self.wfile.write(b'TAILSCALE EXIT NODE - HEALTH OK\n')
     def log_message(self, fmt, *args): pass
 s=http.server.HTTPServer(('0.0.0.0',PORT), H)
 s.serve_forever()
