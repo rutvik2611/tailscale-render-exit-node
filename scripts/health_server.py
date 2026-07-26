@@ -71,8 +71,8 @@ class H(http.server.BaseHTTPRequestHandler):
             ex_tag = ' <span class=badge-exit>EXIT</span>' if e else ''
             badge = 'on' if o else 'off'
             label = 'ONLINE' if o else 'OFFLINE'
-            relay_tag = f' <span class=badge-relay>{r}</span>' if r else ''
-            rows += f'<tr><td>{n}{ex_tag}{relay_tag}</td><td><code>{ip}</code></td><td>{p.get("OS","")}</td><td><span class=badge-{badge}>{label}</span></td></tr>'
+            relay_tag = f' <span class=badge-relay>{r}</span>' if r else '<span style=color:#484f58;font-size:.75rem>direct</span>'
+            rows += f'<tr><td>{n}{ex_tag}</td><td><code>{ip}</code></td><td>{p.get("OS","")}</td><td>{relay_tag}</td><td><span class=badge-{badge}>{label}</span></td></tr>'
         return f'''<!DOCTYPE html><html lang=en><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <meta http-equiv=refresh content=30>
@@ -112,7 +112,7 @@ a{{color:#58a6ff;text-decoration:none}}
 <dt>Offers Exit Node</dt><dd>{"✅" if s.get("ExitNodeOption") else "❌"}</dd>
 </dl></div>
 <div class=card><h2>Connected Devices ({len(ps)})</h2>
-<table><thead><tr><th>Device</th><th>Tailscale IP</th><th>OS</th><th>Status</th></tr></thead>
+<table><thead><tr><th>Device</th><th>Tailscale IP</th><th>OS</th><th>Relay</th><th>Status</th></tr></thead>
 <tbody>{rows}</tbody></table></div>
 <div class=footer>{v} &middot; {mip}</div>
 </body></html>'''
