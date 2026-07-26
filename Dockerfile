@@ -1,17 +1,16 @@
 # =============================================================================
 # Tailscale Exit Node - Dockerfile
 # =============================================================================
-# Minimal production image that runs Tailscale and advertises as an exit node.
-# Includes a lightweight HTTP health endpoint for Render wake-up + monitoring.
+# Installs latest Tailscale from official static build and provides HTTP
+# health endpoint with pretty HTML status page.
 # =============================================================================
 
 FROM alpine:3.20
 
 # ---------------------------------------------------------------------------
-# Install dependencies
+# Install base dependencies
 # ---------------------------------------------------------------------------
 RUN apk add --no-cache \
-    tailscale \
     iptables \
     ip6tables \
     iproute2 \
@@ -20,6 +19,21 @@ RUN apk add --no-cache \
     bash \
     tzdata \
     python3
+
+# ---------------------------------------------------------------------------
+# Install latest Tailscale from official tarball (avoids Alpine repo lag)
+# ---------------------------------------------------------------------------
+RUN ARCH=$(uname -m); \
+    case "$ARCH" in \
+        aarch64|arm64) URL="https://pkgs.tailscale.com/stable/tailscale_1.98.9_arm64.tgz" ;; \
+        x86_64|amd64)  URL="https://pkgs.tailscale.com/stable/tailscale_1.98.9_amd64.tgz" ;; \
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;; \
+    esac && \
+    curl -fsSL "$URL" -o /tmp/tailscale.tgz && \
+    tar xzf /tmp/tailscale.tgz -C /tmp && \
+    cp /tmp/tailscale_*/tailscale /usr/local/bin/ && \
+    cp /tmp/tailscale_*/tailscaled /usr/local/bin/ && \
+    rm -rf /tmp/tailscale*
 
 # ---------------------------------------------------------------------------
 # Create tailscale data directory
@@ -33,14 +47,11 @@ RUN mkdir -p /var/lib/tailscale /var/run/tailscale && \
 COPY scripts/healthcheck.sh /usr/local/bin/healthcheck.sh
 RUN chmod +x /usr/local/bin/healthcheck.sh
 
-# ---------------------------------------------------------------------------
-# Copy entrypoint
-# ---------------------------------------------------------------------------
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
 # ---------------------------------------------------------------------------
-# Expose health check metrics (optional HTTP endpoint)
+# Expose health check port
 # ---------------------------------------------------------------------------
 EXPOSE 8080
 
@@ -48,10 +59,7 @@ EXPOSE 8080
 # Runtime configuration
 # ---------------------------------------------------------------------------
 ENV TAILSCALE_AUTHKEY=""
-ENV HOSTNAME="render-exit-node"
+ENV HOSTNAME="renderfn-exit"
 ENV PORT=8080
-
-# The container needs NET_ADMIN and SYS_MODULE capabilities
-# Add these in render.yaml or your docker-compose.yml
 
 ENTRYPOINT ["/start.sh"]
