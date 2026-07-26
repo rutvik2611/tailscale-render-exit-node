@@ -1,0 +1,44 @@
+# =============================================================================
+# Tailscale Exit Node - Render Blueprint
+# =============================================================================
+# Deploy via: https://dashboard.render.com/select-repo?type=blueprint
+#
+# IMPORTANT: Render free tier limitations
+# - Free tier does NOT support NET_ADMIN capability required by Tailscale
+# - Requires at least a Starter instance for any VPN/Docker network features
+# - See: https://render.com/docs/free-plan
+#
+# For truly free Tailscale exit node, consider:
+# - Oracle Cloud Free Tier (ARM instances)
+# - Fly.io (with small monthly cost)
+# - GitHub Codespaces
+# - AWS EC2 Free Tier (t2.micro, 750 hrs/month)
+# =============================================================================
+
+services:
+  - type: web
+    name: tailscale-exit-node
+    env: docker
+    region: oregon  # Change to your region
+    plan: starter   # Free tier does NOT support Docker capabilities
+
+    dockerfilePath: ./Dockerfile
+
+    envVars:
+      - key: TAILSCALE_AUTHKEY
+        sync: false  # Set this in Render Dashboard manually
+      - key: HOSTNAME
+        value: render-exit-node
+      - key: TAILSCALE_EXTRA_ARGS
+        value: ""
+
+    # Required: NET_ADMIN capability for Tailscale to create network interfaces
+    # Render supports docker capabilities on paid plans only
+    dockerCommand: ""
+    dockerContext: .
+
+    healthCheckPath: /
+    healthCheckTimeout: 120
+
+    # Keep alive - prevent idle shutdown
+    numInstances: 1
