@@ -67,10 +67,12 @@ class H(http.server.BaseHTTPRequestHandler):
             ip = (p.get('TailscaleIPs') or [''])[0]
             e = p.get('ExitNodeOption', False)
             o = p.get('Online', False)
+            r = p.get('Relay', '')
             ex_tag = ' <span class=badge-exit>EXIT</span>' if e else ''
             badge = 'on' if o else 'off'
             label = 'ONLINE' if o else 'OFFLINE'
-            rows += f'<tr><td>{n}{ex_tag}</td><td><code>{ip}</code></td><td>{p.get("OS","")}</td><td><span class=badge-{badge}>{label}</span></td></tr>'
+            relay_tag = f' <span class=badge-relay>{r}</span>' if r else ''
+            rows += f'<tr><td>{n}{ex_tag}{relay_tag}</td><td><code>{ip}</code></td><td>{p.get("OS","")}</td><td><span class=badge-{badge}>{label}</span></td></tr>'
         return f'''<!DOCTYPE html><html lang=en><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <meta http-equiv=refresh content=30>
@@ -91,6 +93,7 @@ tr:last-child td{{border-bottom:none}}
 .badge-on{{background:#003d29;color:#3fb950}}
 .badge-off{{background:#3d0027;color:#f85149}}
 .badge-exit{{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.7rem;font-weight:600;background:#1f6feb22;color:#58a6ff;margin-left:6px}}
+.badge-relay{{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:600;background:#da363322;color:#f78166;margin-left:4px}}
 code{{background:#21262d;padding:2px 6px;border-radius:4px;font-size:.8rem}}
 .grid{{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:.875rem}}
 .grid dt{{color:#8b949e}}.grid dd{{color:#f0f6fc}}
@@ -117,7 +120,7 @@ a{{color:#58a6ff;text-decoration:none}}
     def _build_json_status(self):
         d = self._get_status()
         si = d.get('Self',{}); ps = d.get('Peer',{})
-        devs = [{'name':p.get('DNSName','').split('.')[0],'ip':(p.get('TailscaleIPs') or [None])[0],'os':p.get('OS',''),'online':p.get('Online',False)} for p in ps.values()]
+        devs = [{'name':p.get('DNSName','').split('.')[0],'ip':(p.get('TailscaleIPs') or [None])[0],'os':p.get('OS',''),'online':p.get('Online',False),'relay':p.get('Relay','direct')} for p in ps.values()]
         return {'this_node':{'name':si.get('HostName',''),'ip':d.get('TailscaleIPs',[]),'version':d.get('Version','')},'connected_devices':devs,'total':len(devs)}
 
     def log_message(self, fmt, *args): pass
