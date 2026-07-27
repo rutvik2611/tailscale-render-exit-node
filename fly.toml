@@ -1,4 +1,4 @@
-app = "tailscale-exit-node"
+app = "escape"
 primary_region = "iad"
 
 [build]
