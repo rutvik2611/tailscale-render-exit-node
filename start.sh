@@ -58,6 +58,51 @@ for i in $(seq 1 30); do
     fi
     sleep 1
 done
+log "tailscaled started successfully."
+
+# Step 2b: Clean up stale renderfn-exit nodes via Tailscale API
+log "Cleaning up stale exit nodes..."
+TS_TAILNET=""
+STALE_IDS=""
+STALE_COUNT=0
+# Try to get tailnet info from status
+TS_STATUS_JSON=$(tailscale status --json 2>/dev/null || echo "{}")
+TS_CURRENT_IP=$(echo "$TS_STATUS_JSON" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('TailscaleIPs',[''])[0])" 2>/dev/null || echo "")
+# Query API for all devices with renderfn-exit in name
+if [ -n "${TAILSCALE_AUTHKEY}" ]; then
+    API_RESP=$(curl -s -u "${TAILSCALE_AUTHKEY}:" "https://api.tailscale.com/api/v2/tailnet/-/devices" 2>/dev/null || echo '{"devices":[]}')
+    STALE_NAMES=$(echo "$API_RESP" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+devs=d.get('devices',[])
+stale=[]
+for dev in devs:
+    name=dev.get('name','') or dev.get('hostname','') or ''
+    if 'renderfn' in name.lower():
+        ip = dev.get('addresses',[''])[0]
+        # Skip if this is the current node
+        if ip == '$TS_CURRENT_IP':
+            continue
+        stale.append(dev.get('id',''))
+        print(f'  Removing stale: {name} ({dev.get(\"id\",\"\")})', file=sys.stderr)
+for sid in stale:
+    print(sid)
+" 2>&1)
+    STALE_IDS=$(echo "$STALE_NAMES" | tail -n +2 | head -20 || true)
+    STALE_COUNT=$(echo "$STALE_NAMES" | tail -n +2 | head -20 | wc -l | tr -d ' ' || echo "0")
+    if [ "$STALE_COUNT" -gt "0" ] && [ -n "$STALE_IDS" ]; then
+        log "Found $STALE_COUNT stale node(s). Removing..."
+        echo "$STALE_IDS" | while read -r sid; do
+            if [ -n "$sid" ]; then
+                DELETE_RESP=$(curl -s -X DELETE -u "${TAILSCALE_AUTHKEY}:" "https://api.tailscale.com/api/v2/device/$sid" 2>&1)
+                log "Deleted stale device: $sid"
+            fi
+        done
+        log "Stale node cleanup complete."
+    else
+        log "No stale nodes found."
+    fi
+fi
 
 # Step 3: Authenticate
 log "Authenticating with Tailscale (hostname: ${HOSTNAME})..."
