@@ -86,12 +86,24 @@ class H(http.server.BaseHTTPRequestHandler):
         d = self._get_status()
         s = d.get('Self', {}); ps = d.get('Peer', {}); v = d.get('Version', '?')
         ips = d.get('TailscaleIPs', []); mip = ips[0] if ips else '?'
+        hn = s.get('HostName', '?')
         sc = 'on' if s.get('Online') else 'off'
         ext_ip = self._get_external_ip()
         udp_st, udp_detail, udp_color = self._test_udp()
         from datetime import datetime
         ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+
+        # Build device rows — include Self first as ACTIVE
         rows = ''
+        # Self (the current node, always first)
+        rows += '<tr style="border-left:3px solid #3fb950">'
+        rows += f'<td>{hn} ⭐ <span class=badge-active>ACTIVE</span></td>'
+        rows += f'<td><code>{mip}</code></td>'
+        rows += f'<td>{s.get("OS","linux")}</td>'
+        rows += '<td><span style=color:#484f58;font-size:.75rem>direct</span></td>'
+        rows += f'<td><span class=badge-on>ONLINE</span></td></tr>'
+
+        # Peers
         for p in ps.values():
             n = p.get('DNSName','').rstrip('.').split('.')[0]
             ip = (p.get('TailscaleIPs') or [''])[0]
@@ -102,7 +114,12 @@ class H(http.server.BaseHTTPRequestHandler):
             badge = 'on' if o else 'off'
             label = 'ONLINE' if o else 'OFFLINE'
             relay_tag = f' <span class=badge-relay>{r}</span>' if r else '<span style=color:#484f58;font-size:.75rem>direct</span>'
-            rows += f'<tr><td>{n}{ex_tag}</td><td><code>{ip}</code></td><td>{p.get("OS","")}</td><td>{relay_tag}</td><td><span class=badge-{badge}>{label}</span></td></tr>'
+            # Mark stale exit nodes (have suffix like -1, -2 while current has no suffix)
+            stale_tag = ''
+            if e and n != hn and (n.startswith(hn) and n != hn):
+                stale_tag = ' <span class=badge-stale>STALE</span>'
+            rows += f'<tr><td>{n}{ex_tag}{stale_tag}</td><td><code>{ip}</code></td><td>{p.get("OS","")}</td><td>{relay_tag}</td><td><span class=badge-{badge}>{label}</span></td></tr>'
+
         return f'''<!DOCTYPE html><html lang=en><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <meta http-equiv=refresh content=30>
@@ -124,18 +141,25 @@ tr:last-child td{{border-bottom:none}}
 .badge-off{{background:#3d0027;color:#f85149}}
 .badge-exit{{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.7rem;font-weight:600;background:#1f6feb22;color:#58a6ff;margin-left:6px}}
 .badge-relay{{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:600;background:#da363322;color:#f78166;margin-left:4px}}
+.badge-active{{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.7rem;font-weight:600;background:#003d29;color:#3fb950;margin-left:4px}}
+.badge-stale{{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:600;background:#da363322;color:#f78166;margin-left:4px}}
 code{{background:#21262d;padding:2px 6px;border-radius:4px;font-size:.8rem}}
 .grid{{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:.875rem}}
 .grid dt{{color:#8b949e}}.grid dd{{color:#f0f6fc}}
 .udp-ok{{color:#3fb950;font-weight:600}}
 .udp-blocked{{color:#f85149;font-weight:600}}
+.tip{{background:#1f6feb22;border:1px solid #1f6feb;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:.875rem}}
+.tip strong{{color:#58a6ff}}
 .footer{{text-align:center;color:#484f58;font-size:.75rem;margin-top:32px}}
 a{{color:#58a6ff;text-decoration:none}}
 </style></head><body>
-<h1><span class=badge-{sc}>{"● LIVE" if s.get("Online") else "○ OFFLINE"}</span>{s.get("HostName","?")}</h1>
+<h1><span class=badge-{sc}>{"● LIVE" if s.get("Online") else "○ OFFLINE"}</span>{hn}</h1>
 <p class=sub>Tailscale exit node &middot; <a href=/status>refresh</a> &middot; auto-refresh 30s &middot; <a href=/api/status>JSON</a></p>
+<div class=tip>
+<strong>📱 Connect your Android:</strong> Open Tailscale app → Exit Node → select <code>{hn}</code> (the ACTIVE one, not STALE)
+</div>
 <div class=card><h2>This Node</h2><dl class=grid>
-<dt>Hostname</dt><dd>{s.get("HostName","?")}</dd>
+<dt>Hostname</dt><dd>{hn}</dd>
 <dt>Tailscale IP</dt><dd><code>{mip}</code></dd>
 <dt>External IP</dt><dd><code>{ext_ip}</code></dd>
 <dt>Version</dt><dd><code>{v}</code></dd>
@@ -147,7 +171,7 @@ a{{color:#58a6ff;text-decoration:none}}
 <p class=udp-{"ok" if "WORKING" in udp_st else "blocked"} style=font-size:1.1rem>{udp_st}</p>
 <p class=sub style=margin-top:4px>Echo server 65.21.106.102:8080 &middot; {udp_detail}</p>
 </div>
-<div class=card><h2>Connected Devices ({len(ps)})</h2>
+<div class=card><h2>All Devices ({len(ps) + 1})</h2>
 <table><thead><tr><th>Device</th><th>Tailscale IP</th><th>OS</th><th>Relay</th><th>Status</th></tr></thead>
 <tbody>{rows}</tbody></table></div>
 <div class=footer>{v} &middot; {mip} &middot; {ts}</div>
