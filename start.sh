@@ -69,7 +69,6 @@ TS_UP_CMD=(
     --advertise-exit-node
     --accept-routes
     --advertise-tags=tag:render-exit
-    --ephemeral
 )
 if [ -n "${TAILSCALE_EXTRA_ARGS}" ]; then
     # shellcheck disable=SC2086
