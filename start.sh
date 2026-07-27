@@ -161,5 +161,20 @@ while true; do
         HEALTH_PID=$!
     fi
 
+    # If tailscaled died (OOM), restart it
+    if ! pgrep -x tailscaled > /dev/null 2>&1; then
+        log "WARNING: tailscaled not running. Restarting..."
+        tailscaled --state="${TAILSCALE_STATE_DIR}/tailscaled.state" --socket="${TAILSCALE_SOCKET}" --tun=userspace-networking --socks5-server=localhost:1055 --outbound-http-proxy-listen=localhost:1055 2>&1 | while read -r line; do
+            log "[tailscaled] $line"
+        done &
+        sleep 3
+        tailscale up --reset \
+            --authkey="${TAILSCALE_AUTHKEY}" \
+            --hostname="${HOSTNAME}" \
+            --advertise-exit-node \
+            --accept-routes \
+            ${TAILSCALE_EXTRA_ARGS:+"${TAILSCALE_EXTRA_ARGS}"} 2>&1 || true
+    fi
+
     sleep 60
 done
