@@ -147,10 +147,17 @@ class H(http.server.BaseHTTPRequestHandler):
         udp_st, udp_detail = self._test_udp()
         from datetime import datetime
         ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
-
         rows = ''
+        # Self (the current node, always first)
+        hostname = hn
+        provider = ''
+        if 'render' in hostname.lower():
+            provider = 'Render'
+        elif 'escape' in hostname.lower():
+            provider = 'Fly.io'
+        prov_tag = ' <span class=badge-provider>' + provider + '</span>' if provider else ''
         rows += '<tr style="border-left:3px solid #3fb950">'
-        rows += '<td>' + hn + ' &#11088; <span class=badge-active>ACTIVE</span></td>'
+        rows += '<td>' + hostname + ' &#11088; <span class=badge-active>ACTIVE</span>' + prov_tag + '</td>'
         rows += '<td><code>' + mip + '</code></td>'
         rows += '<td>' + s.get("OS","linux") + '</td>'
         rows += '<td><span style=color:#484f58;font-size:.75rem>direct</span></td>'
@@ -196,7 +203,7 @@ class H(http.server.BaseHTTPRequestHandler):
         html += '.badge-exit{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.7rem;font-weight:600;background:#1f6feb22;color:#58a6ff;margin-left:6px}'
         html += '.badge-relay{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:600;background:#da363322;color:#f78166;margin-left:4px}'
         html += '.badge-active{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.7rem;font-weight:600;background:#003d29;color:#3fb950;margin-left:4px}'
-        html += '.badge-stale{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:600;background:#da363322;color:#f78166;margin-left:4px}'
+        html += '.badge-stale{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:600;background:#da363322;color:#f78166;margin-left:4px}.badge-provider{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:600;background:#1f6feb33;color:#58a6ff;margin-left:4px}'
         html += 'code{background:#21262d;padding:2px 6px;border-radius:4px;font-size:.8rem}'
         html += '.grid{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:.875rem}'
         html += '.grid dt{color:#8b949e}.grid dd{color:#f0f6fc}'

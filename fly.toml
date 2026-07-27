@@ -1,4 +1,4 @@
-app = "escape"
+app = "escape-node"
 primary_region = "iad"
 
 [build]
