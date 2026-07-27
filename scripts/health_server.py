@@ -134,7 +134,14 @@ class H(http.server.BaseHTTPRequestHandler):
         d = self._get_status()
         s = d.get('Self', {}); ps = d.get('Peer', {}); v = d.get('Version', '?')
         ips = d.get('TailscaleIPs', []); mip = ips[0] if ips else '?'
-        hn = s.get('HostName', '?')
+        # Use the actual registered name from DNSName, not the requested hostname
+        full_dns = s.get('DNSName', '')
+        if full_dns:
+            hn = full_dns.split('.')[0]  # e.g. "renderfn-exit-3" from "renderfn-exit-3.tail70c77e.ts.net"
+        else:
+            hn = s.get('HostName', '?')
+        # Base name for identifying stale siblings (renderfn-exit-1, -2, etc.)
+        base_hn = s.get('HostName', '?')  # e.g. "renderfn-exit" (the requested base name)
         sc = 'on' if s.get('Online') else 'off'
         ext_ip = self._get_external_ip()
         udp_st, udp_detail = self._test_udp()
@@ -159,7 +166,7 @@ class H(http.server.BaseHTTPRequestHandler):
             badge = 'on' if o else 'off'
             label = 'ONLINE' if o else 'OFFLINE'
             relay_tag = ' <span class=badge-relay>' + r + '</span>' if r else '<span style=color:#484f58;font-size:.75rem>direct</span>'
-            stale = ' <span class=badge-stale>STALE</span>' if (e and n != hn and n.startswith(hn)) else ''
+            stale = ' <span class=badge-stale>STALE</span>' if (e and n != base_hn and n.startswith(base_hn)) else ''
             rows += '<tr><td>' + n + ex_tag + stale + '</td><td><code>' + ip + '</code></td><td>' + p.get("OS","") + '</td><td>' + relay_tag + '</td><td><span class=badge-' + badge + '>' + label + '</span></td></tr>'
 
         udp_css = 'ok' if udp_st == 'WORKING' else 'blocked'
